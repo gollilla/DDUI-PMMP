@@ -7,6 +7,7 @@ namespace soradore\DDUI\element;
 use pocketmine\player\Player;
 use soradore\DDUI\element\options\DropdownOptions;
 use soradore\DDUI\Observable;
+use soradore\DDUI\properties\BoolProperty;
 use soradore\DDUI\properties\FloatProperty;
 use soradore\DDUI\properties\ObjectProperty;
 use soradore\DDUI\properties\StringListProperty;
@@ -30,9 +31,14 @@ class DropdownElement extends Element
         $options ??= new DropdownOptions();
 
         $this->setLabel($label);
-        $this->setProperty(new StringListProperty('items', $items, $this));
+        $itemObjects = array_map(
+            static fn(int $idx, string $label) => ['label' => $label, 'value' => $idx],
+            array_keys($items),
+            array_values($items),
+        );
+        $this->setProperty(new StringListProperty('items', $itemObjects, $this));
 
-        $selectedProp = new FloatProperty('selectedItem', (float) $selected->getValue(), $this);
+        $selectedProp = new FloatProperty('value', (float) $selected->getValue(), $this);
         $selected->subscribe(function (int|float $v) use ($selectedProp): ?FloatProperty {
             $selectedProp->setValue((float) $v);
 
@@ -71,6 +77,28 @@ class DropdownElement extends Element
         $property = new StringProperty('description', $description->getValue(), $this);
         $description->subscribe(function (string $v) use ($property): ?StringProperty {
             $property->setValue($v);
+
+            return $property;
+        });
+        $this->setProperty($property);
+
+        return $this;
+    }
+
+    public function setVisible(bool $visible): static
+    {
+        parent::setVisible($visible);
+        $this->setProperty(new BoolProperty('dropdown_visible', $visible, $this));
+
+        return $this;
+    }
+
+    public function setVisibleObservable(Observable $visible): static
+    {
+        parent::setVisibleObservable($visible);
+        $property = new BoolProperty('dropdown_visible', $visible->getValue(), $this);
+        $visible->subscribe(function (bool $value) use ($property): ?BoolProperty {
+            $property->setValue($value);
 
             return $property;
         });
