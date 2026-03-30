@@ -1,0 +1,6 @@
+name: DDUI
+version: 1.0.0
+main: soradore\DDUI\Main
+api: 5.0.0
+description: Data-Driven UI library for PocketMine-MP
+author: soradore
