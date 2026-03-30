@@ -41,6 +41,11 @@ abstract class DataDrivenScreen extends ObjectProperty
 
     public function show(Player $player): void
     {
+        $old = self::$activeScreens[spl_object_id($player)] ?? null;
+        if ($old !== null && $old !== $this) {
+            unset($old->viewers[spl_object_id($player)]);
+        }
+
         [$storeName] = explode(':', $this->getIdentifier(), 2);
 
         $player->getNetworkSession()->sendDataPacket(
@@ -52,6 +57,24 @@ abstract class DataDrivenScreen extends ObjectProperty
 
         $this->viewers[spl_object_id($player)] = $player;
         self::$activeScreens[spl_object_id($player)] = $this;
+    }
+
+    /**
+     * Send a full CHANGE packet with the current state to all viewers.
+     * Use this when multiple properties change at once (e.g. batch visibility updates).
+     */
+    public function sendFullUpdate(): void
+    {
+        [$storeName] = explode(':', $this->getIdentifier(), 2);
+        $packet = DduiDataStorePacket::create(
+            $storeName,
+            $this->getDataStoreProperty(),
+            ++$this->updateCount,
+            $this->toJsonValue(),
+        );
+        foreach ($this->viewers as $viewer) {
+            $viewer->getNetworkSession()->sendDataPacket($packet);
+        }
     }
 
     public function close(Player $player): void
