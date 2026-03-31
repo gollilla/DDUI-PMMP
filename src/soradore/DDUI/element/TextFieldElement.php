@@ -25,6 +25,7 @@ class TextFieldElement extends Element
 
         $this->setLabel($label);
 
+        // Bind the observable text bidirectionally
         $textProperty = new StringProperty('text', $text->getValue(), $this);
         $text->subscribe(function (string $v) use ($textProperty): ?StringProperty {
             $textProperty->setValue($v);
@@ -32,12 +33,11 @@ class TextFieldElement extends Element
             return $textProperty;
         });
         $textProperty->addListener(function (Player $player, mixed $data) use ($text): void {
-            Observable::withOutboundSuppressed(static function () use ($text, $data): void {
-                $text->setValue((string) $data);
-            });
+            $text->setValue((string) $data);
         });
         $this->setProperty($textProperty);
 
+        // Register element-level listener forwarding
         $textProperty->addListener(fn(Player $p, mixed $d) => $this->triggerListeners($p, $d));
 
         $this->applyDescription($options);

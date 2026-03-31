@@ -50,11 +50,6 @@ abstract class DataDrivenProperty
         return $this->parent;
     }
 
-    public function getTriggerCount(): int
-    {
-        return $this->triggerCount;
-    }
-
     public function addListener(callable $listener): static
     {
         $this->listeners[] = $listener;
@@ -70,6 +65,10 @@ abstract class DataDrivenProperty
         }
     }
 
+    /**
+     * Returns the dotted/bracket path of this property relative to the root screen.
+     * Example: "layout[0].onClick", "layout[1].value"
+     */
     public function getPath(): string
     {
         if ($this->parent === null) {
@@ -89,6 +88,10 @@ abstract class DataDrivenProperty
         return $parentPath . '.' . $this->name;
     }
 
+    /**
+     * Walks up the parent chain and returns the owning DataDrivenScreen,
+     * or null if this property is not attached to a screen.
+     */
     public function getRootScreen(): ?DataDrivenScreen
     {
         if ($this->parent !== null) {

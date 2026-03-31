@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace soradore\DDUI;
 
 use pocketmine\network\mcpe\protocol\ClientboundDataDrivenUIShowScreenPacket;
+use soradore\DDUI\Packet\DduiCloseAllScreensPacket;
+use soradore\DDUI\Packet\DduiDataStorePacket;
 use pocketmine\network\mcpe\protocol\types\BoolDataStoreValue;
 use pocketmine\network\mcpe\protocol\types\DataStoreUpdate;
 use pocketmine\network\mcpe\protocol\types\DoubleDataStoreValue;
 use pocketmine\network\mcpe\protocol\types\StringDataStoreValue;
 use pocketmine\player\Player;
 use soradore\DDUI\element\LayoutElement;
-use soradore\DDUI\Packet\DduiCloseAllScreensPacket;
-use soradore\DDUI\Packet\DduiDataStorePacket;
 use soradore\DDUI\properties\DataDrivenProperty;
 use soradore\DDUI\properties\ObjectProperty;
 
@@ -59,30 +59,12 @@ abstract class DataDrivenScreen extends ObjectProperty
         self::$activeScreens[spl_object_id($player)] = $this;
     }
 
-    /**
-     * Send a full CHANGE packet with the current state to all viewers.
-     * Use this when multiple properties change at once (e.g. batch visibility updates).
-     */
-    public function sendFullUpdate(): void
-    {
-        [$storeName] = explode(':', $this->getIdentifier(), 2);
-        $packet = DduiDataStorePacket::create(
-            $storeName,
-            $this->getDataStoreProperty(),
-            ++$this->updateCount,
-            $this->toJsonValue(),
-        );
-        foreach ($this->viewers as $viewer) {
-            $viewer->getNetworkSession()->sendDataPacket($packet);
-        }
-    }
-
     public function close(Player $player): void
     {
         unset($this->viewers[spl_object_id($player)]);
         unset(self::$activeScreens[spl_object_id($player)]);
         $player->getNetworkSession()->sendDataPacket(
-            DduiCloseAllScreensPacket::create(),
+            DduiCloseAllScreensPacket::create(0),
         );
     }
 
@@ -90,11 +72,6 @@ abstract class DataDrivenScreen extends ObjectProperty
     public function getViewers(): array
     {
         return array_values($this->viewers);
-    }
-
-    public function getUpdateCount(): int
-    {
-        return $this->updateCount;
     }
 
     public static function getActiveScreen(Player $player): ?self
@@ -107,6 +84,10 @@ abstract class DataDrivenScreen extends ObjectProperty
         unset(self::$activeScreens[spl_object_id($player)]);
     }
 
+    /**
+     * Handle an incoming ServerboundDataStorePacket update for a player.
+     * Resolves the path to the affected property and fires its listeners.
+     */
     public static function handleIncoming(Player $player, DataStoreUpdate $update): void
     {
         $screen = self::getActiveScreen($player);
@@ -126,11 +107,13 @@ abstract class DataDrivenScreen extends ObjectProperty
             $data instanceof DoubleDataStoreValue => $data->getValue(),
         };
 
-        Observable::withOutboundSuppressed(static function () use ($property, $player, $value): void {
-            $property->triggerListeners($player, $value);
-        });
+        $property->triggerListeners($player, $value);
     }
 
+    /**
+     * Resolve a dotted/bracket path string to the property at that location.
+     * Example: "layout[0].onClick" -> ButtonClickElement
+     */
     public function resolvePath(string $path): ?DataDrivenProperty
     {
         if ($path === '') {

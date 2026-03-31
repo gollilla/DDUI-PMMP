@@ -16,7 +16,7 @@ use soradore\DDUI\properties\StringProperty;
 class DropdownElement extends Element
 {
     /**
-     * @param string[]   $items    Display labels for each option.
+     * @param string[]  $items    Display labels for each option.
      * @param Observable $selected Observable holding the selected index (0-based).
      */
     public function __construct(
@@ -31,6 +31,7 @@ class DropdownElement extends Element
         $options ??= new DropdownOptions();
 
         $this->setLabel($label);
+
         $itemObjects = array_map(
             static fn(int $idx, string $label) => ['label' => $label, 'value' => $idx],
             array_keys($items),
@@ -38,6 +39,7 @@ class DropdownElement extends Element
         );
         $this->setProperty(new StringListProperty('items', $itemObjects, $this));
 
+        // Bind the observable selection bidirectionally
         $selectedProp = new FloatProperty('value', (float) $selected->getValue(), $this);
         $selected->subscribe(function (int|float $v) use ($selectedProp): ?FloatProperty {
             $selectedProp->setValue((float) $v);
@@ -45,12 +47,11 @@ class DropdownElement extends Element
             return $selectedProp;
         });
         $selectedProp->addListener(function (Player $player, mixed $data) use ($selected): void {
-            Observable::withOutboundSuppressed(static function () use ($selected, $data): void {
-                $selected->setValue((int) (float) $data);
-            });
+            $selected->setValue((int) (float) $data);
         });
         $this->setProperty($selectedProp);
 
+        // Register element-level listener forwarding
         $selectedProp->addListener(fn(Player $p, mixed $d) => $this->triggerListeners($p, $d));
 
         $this->applyDescription($options);

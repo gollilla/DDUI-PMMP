@@ -25,6 +25,7 @@ class ToggleElement extends Element
 
         $this->setLabel($label);
 
+        // Bind the observable value bidirectionally
         $valueProperty = new BoolProperty('toggled', $value->getValue(), $this);
         $value->subscribe(function (bool $v) use ($valueProperty): ?BoolProperty {
             $valueProperty->setValue($v);
@@ -32,12 +33,11 @@ class ToggleElement extends Element
             return $valueProperty;
         });
         $valueProperty->addListener(function (Player $player, mixed $data) use ($value): void {
-            Observable::withOutboundSuppressed(static function () use ($value, $data): void {
-                $value->setValue((bool) $data);
-            });
+            $value->setValue((bool) $data);
         });
         $this->setProperty($valueProperty);
 
+        // Register element-level listener forwarding
         $valueProperty->addListener(fn(Player $p, mixed $d) => $this->triggerListeners($p, $d));
 
         $this->applyDescription($options);

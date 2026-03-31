@@ -15,11 +15,22 @@ use pocketmine\network\mcpe\protocol\ProtocolInfo;
 use pocketmine\network\mcpe\protocol\serializer\CommonTypes;
 
 /**
- * Encodes ClientboundDataStorePacket in PNX wire format:
- *   - updateCount: IntLE (not VarInt)
- *   - value type IDs: IntLE (not VarInt)
- *   - value type: TYPE(6) recursive object (not STRING JSON)
- *   - INT64 type ID = 2, STRING type ID = 4, BOOL type ID = 1, OBJECT type ID = 6
+ * Encodes ClientboundDataStorePacket in PNX wire format.
+ *
+ * Type ordinals (DataStoreChangeInfo.Type):
+ *   UPDATE = 0
+ *   CHANGE = 1
+ *
+ * CHANGE payload:
+ *   String storeName, String property, IntLE updateCount,
+ *   IntLE valueTypeId, [value]
+ *
+ * UPDATE payload:
+ *   String storeName, String property, String path,
+ *   VarInt control (0=INT64, 1=BOOL, 2=STRING), [value]
+ *
+ * Value type IDs (DataStorePropertyValue.Type):
+ *   BOOL=1, INT64=2, STRING=4, TYPE(object)=6
  */
 class DduiDataStorePacket extends DataPacket implements ClientboundPacket
 {
@@ -33,7 +44,6 @@ class DduiDataStorePacket extends DataPacket implements ClientboundPacket
 
     private bool $isUpdate = false;
     private string $path = '';
-    private int $triggerCount = 0;
 
     /** @param mixed $value Result of DataDrivenScreen::toJsonValue() */
     public static function create(string $storeName, string $property, int $updateCount, mixed $value): static
@@ -48,21 +58,13 @@ class DduiDataStorePacket extends DataPacket implements ClientboundPacket
     }
 
     /** @param mixed $value Result of DataDrivenProperty::toJsonValue() */
-    public static function createUpdate(
-        string $storeName,
-        string $property,
-        int $updateCount,
-        string $path,
-        int $triggerCount,
-        mixed $value,
-    ): static {
+    public static function createUpdate(string $storeName, string $property, string $path, mixed $value): static
+    {
         $p = new static();
         $p->storeName = $storeName;
         $p->property = $property;
-        $p->updateCount = $updateCount;
         $p->isUpdate = true;
         $p->path = $path;
-        $p->triggerCount = $triggerCount;
         $p->value = $value;
 
         return $p;
@@ -75,23 +77,24 @@ class DduiDataStorePacket extends DataPacket implements ClientboundPacket
         VarInt::writeUnsignedInt($out, 1); // 1 entry
 
         if ($this->isUpdate) {
-            VarInt::writeUnsignedInt($out, 2); // DataStoreType::UPDATE = 2
+            VarInt::writeUnsignedInt($out, 0); // UPDATE = 0
             CommonTypes::putString($out, $this->storeName);
             CommonTypes::putString($out, $this->property);
-            LE::writeUnsignedInt($out, $this->updateCount);
             CommonTypes::putString($out, $this->path);
-            LE::writeUnsignedInt($out, $this->triggerCount);
+            $this->writeUpdateValue($out, $this->value);
         } else {
-            VarInt::writeUnsignedInt($out, 1); // DataStoreType::CHANGE = 1
+            VarInt::writeUnsignedInt($out, 1); // CHANGE = 1
             CommonTypes::putString($out, $this->storeName);
             CommonTypes::putString($out, $this->property);
             LE::writeUnsignedInt($out, $this->updateCount);
+            $this->writeChangeValue($out, $this->value);
         }
-
-        $this->writePnxTypedValue($out, $this->value);
     }
 
-    private function writePnxTypedValue(ByteBufferWriter $out, mixed $value): void
+    /**
+     * CHANGE value: IntLE typeId first, then value bytes.
+     */
+    private function writeChangeValue(ByteBufferWriter $out, mixed $value): void
     {
         if (is_bool($value)) {
             LE::writeUnsignedInt($out, 1); // BOOL
@@ -104,18 +107,18 @@ class DduiDataStorePacket extends DataPacket implements ClientboundPacket
             CommonTypes::putString($out, $value);
         } elseif (is_array($value)) {
             LE::writeUnsignedInt($out, 6); // TYPE (object)
-            $this->writePnxObject($out, $value);
+            $this->writeChangeObject($out, $value);
         }
     }
 
-    private function writePnxObject(ByteBufferWriter $out, array $value): void
+    private function writeChangeObject(ByteBufferWriter $out, array $value): void
     {
         if (array_is_list($value)) {
-            // Sequential array (e.g. layout, items): add numeric string keys + "length"
+            // Sequential array: numeric string keys + "length"
             VarInt::writeUnsignedInt($out, count($value) + 1);
             foreach ($value as $i => $child) {
                 CommonTypes::putString($out, (string) $i);
-                $this->writePnxTypedValue($out, $child);
+                $this->writeChangeValue($out, $child);
             }
             CommonTypes::putString($out, 'length');
             LE::writeUnsignedInt($out, 2); // INT64
@@ -125,9 +128,30 @@ class DduiDataStorePacket extends DataPacket implements ClientboundPacket
             VarInt::writeUnsignedInt($out, count($value));
             foreach ($value as $key => $child) {
                 CommonTypes::putString($out, (string) $key);
-                $this->writePnxTypedValue($out, $child);
+                $this->writeChangeValue($out, $child);
             }
         }
+    }
+
+    /**
+     * UPDATE value: VarInt control (0=INT64, 1=BOOL, 2=STRING), then value bytes,
+     * then IntLE propertyUpdateCount, IntLE pathUpdateCount.
+     */
+    private function writeUpdateValue(ByteBufferWriter $out, mixed $value): void
+    {
+        if (is_bool($value)) {
+            VarInt::writeUnsignedInt($out, 1); // BOOL
+            CommonTypes::putBool($out, $value);
+        } elseif (is_string($value)) {
+            VarInt::writeUnsignedInt($out, 2); // STRING
+            CommonTypes::putString($out, $value);
+        } else {
+            VarInt::writeUnsignedInt($out, 0); // INT64 (written as doubleLE)
+            // Write float as little-endian double (8 bytes) by reinterpreting bits
+            LE::writeSignedLong($out, unpack('q', pack('e', (float) $value))[1]);
+        }
+        LE::writeUnsignedInt($out, 1); // propertyUpdateCount
+        LE::writeUnsignedInt($out, 1); // pathUpdateCount
     }
 
     public function handle(PacketHandlerInterface $handler): bool

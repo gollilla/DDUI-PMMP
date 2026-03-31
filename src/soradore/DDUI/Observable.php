@@ -8,8 +8,9 @@ use soradore\DDUI\Packet\DduiDataStorePacket;
 use soradore\DDUI\properties\DataDrivenProperty;
 
 /**
- * A reactive value holder that notifies subscribers when the value changes
- * and optionally propagates live updates to connected clients via DataStore packets.
+ * A reactive value holder. Subscribers are called whenever {@link setValue}
+ * is invoked, and may return a {@link DataDrivenProperty} to trigger a
+ * live DataStore UPDATE packet for connected clients.
  *
  * Listener signature: callable(mixed $newValue): ?DataDrivenProperty
  * Return the DataDrivenProperty that was updated, or null to skip outbound.
@@ -21,7 +22,7 @@ class Observable
     /** @var callable[] */
     private array $listeners = [];
 
-    private static bool $suppressOutbound = false;
+    private static int $suppressDepth = 0;
 
     /** @param T $value */
     public function __construct(private mixed $value) {}
@@ -37,18 +38,10 @@ class Observable
     {
         $this->value = $value;
 
-        if (self::$suppressOutbound) {
-            foreach ($this->listeners as $listener) {
-                ($listener)($value);
-            }
-
-            return;
-        }
-
         foreach ($this->listeners as $listener) {
             $property = ($listener)($value);
 
-            if ($property === null) {
+            if (! ($property instanceof DataDrivenProperty) || self::$suppressDepth > 0) {
                 continue;
             }
 
@@ -61,9 +54,7 @@ class Observable
             $packet = DduiDataStorePacket::createUpdate(
                 $storeName,
                 $screen->getDataStoreProperty(),
-                $screen->getUpdateCount(),
                 $property->getPath(),
-                $property->getTriggerCount(),
                 $property->toJsonValue(),
             );
 
@@ -93,12 +84,11 @@ class Observable
      */
     public static function withOutboundSuppressed(callable $action): void
     {
-        $prev = self::$suppressOutbound;
-        self::$suppressOutbound = true;
+        self::$suppressDepth++;
         try {
             $action();
         } finally {
-            self::$suppressOutbound = $prev;
+            self::$suppressDepth--;
         }
     }
 }
