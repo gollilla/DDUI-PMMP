@@ -15,6 +15,7 @@ use pocketmine\player\Player;
 use soradore\DDUI\element\LayoutElement;
 use soradore\DDUI\properties\DataDrivenProperty;
 use soradore\DDUI\properties\ObjectProperty;
+use soradore\DDUI\Observable;
 
 abstract class DataDrivenScreen extends ObjectProperty
 {
@@ -107,7 +108,7 @@ abstract class DataDrivenScreen extends ObjectProperty
             $data instanceof DoubleDataStoreValue => $data->getValue(),
         };
 
-        $property->triggerListeners($player, $value);
+        Observable::withOutboundSuppressed(fn() => $property->triggerListeners($player, $value));
     }
 
     /**
