@@ -10,6 +10,7 @@ use soradore\DDUI\element\DropdownElement;
 use soradore\DDUI\element\HeaderElement;
 use soradore\DDUI\element\LabelElement;
 use soradore\DDUI\element\SliderElement;
+use soradore\DDUI\element\DividerElement;
 use soradore\DDUI\element\SpacerElement;
 use soradore\DDUI\element\TextFieldElement;
 use soradore\DDUI\element\ToggleElement;
@@ -19,6 +20,7 @@ use soradore\DDUI\element\options\DropdownOptions;
 use soradore\DDUI\element\options\HeaderOptions;
 use soradore\DDUI\element\options\LabelOptions;
 use soradore\DDUI\element\options\SliderOptions;
+use soradore\DDUI\element\options\DividerOptions;
 use soradore\DDUI\element\options\SpacerOptions;
 use soradore\DDUI\element\options\TextFieldOptions;
 use soradore\DDUI\element\options\ToggleOptions;
@@ -131,6 +133,14 @@ class CustomForm extends DataDrivenScreen
         if ($onChange !== null) {
             $element->onChange($onChange);
         }
+        $this->layout->setProperty($element);
+
+        return $this;
+    }
+
+    public function divider(?DividerOptions $options = null): static
+    {
+        $element = new DividerElement($options, $this->layout);
         $this->layout->setProperty($element);
 
         return $this;
